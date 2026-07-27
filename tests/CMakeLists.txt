@@ -14,6 +14,15 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
 
 target_link_libraries(${DMOD_MODULE_NAME} dmdhcp_if)
 
+# dmnetif/dmroute: dmdhcp.h itself needs these headers (dmnetif_iface_t,
+# dmroute_addr_t) - the codec tests here don't call a dmnetif_*/dmroute_*
+# function, but they do construct dmroute_addr_t values directly, so the
+# type must be visible. Same reasoning as dmtcp/tests/CMakeLists.txt.
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmnetif
+    dmroute
+)
+
 # Register the test module with ctest - this replays the same two steps CI
 # runs (see .github/templates/ci.yml.template): install the test module's
 # dependencies with dmf-get, then execute it through dmod_loader. The test's

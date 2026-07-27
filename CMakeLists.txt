@@ -62,6 +62,13 @@ set(DMOD_DIF_IMPLS          )
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
     src/dmdhcp.c
+    src/dmdhcp_registrations.c
+    src/dmdhcp_wire.c
+    src/dmdhcp_options.c
+    src/dmdhcp_lease_table.c
+    src/dmdhcp_output.c
+    src/dmdhcp_input.c
+    src/dmdhcp_lifecycle.c
 )
 
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE
@@ -72,9 +79,40 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# To depend on another module's headers, use:
-#   dmod_link_modules(${DMOD_MODULE_NAME}
-#       other_module@1.0
-#   )
+# dmudp:   dmudp_bind()/_unbind() to receive (see src/dmdhcp_input.c),
+#          dmudp_send()/_send_on_iface() to transmit (see
+#          src/dmdhcp_output.c) - broadcast sends always go through
+#          _send_on_iface(), never the routed _send(), see that file's top
+#          comment.
+# dmip:    header-only - dmudp.h itself `#include`s "dmip.h" (for
+#          dmip_addr_t, reused as the type of dmudp_send()'s `dst`), so
+#          this needs to be linked purely to satisfy that transitive
+#          header dependency. dmdhcp never calls a dmip_* function
+#          directly - the same "linked for a header, not a function"
+#          relationship dmtcp's own CMakeLists.txt documents for dmroute.
+# dmnetif: dmnetif_iface_t, applying a lease (dmnetif_set_netmask()/
+#          _set_ip_address()/_set_broadcast(), dmnetif_get_mac_address()/
+#          _get_name()) - see src/dmdhcp_lifecycle.c / src/dmdhcp_output.c.
+# dmroute: dmroute_addr_t (used throughout instead of dmip_addr_t - see
+#          include/dmdhcp.h's top comment), dmroute_add()/_remove() for the
+#          default route installed on BOUND.
+# dmarp:   dmarp_resolve() as the RFC 2131 §4.4.1 conflict probe (see
+#          src/dmdhcp_output.c's run_conflict_probe()).
+# dmlist:  the lease table (src/dmdhcp_lease_table.c) and each lease's DNS
+#          server list (option 6 - dmdhcp is the only owner of DNS
+#          configuration storage in this ecosystem).
+# dmosi:   mutexes (one per lease), dmosi_timer_t (retransmit_timer,
+#          lease_timer), and dmosi_rand32() for XID/jitter generation - no
+#          bespoke PRNG in this module.
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmudp
+    dmip
+    dmnetif
+    dmroute
+    dmarp
+    dmlist
+    dmosi
+)
+
 enable_testing()
 add_subdirectory(tests)

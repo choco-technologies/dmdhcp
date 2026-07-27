@@ -1,84 +1,141 @@
-#define DMOD_ENABLE_REGISTRATION ON
+/**
+ * @file dmdhcp.c
+ * @brief DMOD lifecycle (dmod_init()/_deinit()) and dmdhcp_start()/_stop()/
+ *        _release()/_renew()
+ *
+ * Everything else lives in the other dmdhcp_*.c files - see
+ * dmdhcp_internal.h's top comment for the full file map.
+ */
 #include "dmod.h"
-#include "dmdhcp.h"
+#include "dmdhcp_internal.h"
+#include <errno.h>
 
-/* Example internal state - replace with your module's real fields. */
-struct dmdhcp
+dmod_dmdhcp_api_declaration(1.0, dmdhcp_lease_t, _start, ( dmnetif_iface_t iface, const dmdhcp_callbacks_t* callbacks, void* user_data, const dmdhcp_options_t* options ))
 {
-    bool valid;
-};
+    if (iface == NULL)
+        return NULL;
 
-dmod_dmdhcp_api_declaration(1.0, dmdhcp_t, _create, ( void ))
-{
-    /* Dmod_Malloc/Dmod_Free (SAL) are dmod's own heap functions - embedded
-     * targets don't necessarily link a libc allocator, so use these instead
-     * of malloc()/free() in module code. */
-    struct dmdhcp *instance = Dmod_Malloc(sizeof(*instance));
-    if (instance == NULL)
+    struct dmdhcp_lease* lease = dmdhcp_lease_table_create(iface);
+    if (lease == NULL)
+        return NULL;
+
+    if (callbacks != NULL)
     {
+        lease->callbacks = *callbacks;
+    }
+    lease->user_data = user_data;
+    if (options != NULL && options->hostname != NULL)
+    {
+        lease->hostname = Dmod_StrDup(options->hostname);
+    }
+
+    if (dmdhcp_lease_table_insert(lease) != 0)
+    {
+        /* `iface` already has an active lease */
+        dmdhcp_lease_table_destroy(lease);
         return NULL;
     }
 
-    instance->valid = true;
-    return instance;
-}
-
-dmod_dmdhcp_api_declaration(1.0, void, _destroy, ( dmdhcp_t handle ))
-{
-    Dmod_Free(handle);
-}
-
-dmod_dmdhcp_api_declaration(1.0, bool, _is_valid, ( dmdhcp_t handle ))
-{
-    return handle != NULL && handle->valid;
-}
-
-/**
- * @brief Pre-initialization function for the module.
- *
- * @note This function is optional. You can remove it if you don't need it.
- *
- * This function is called when the module enabling is in progress.
- *
- * You can use this function to load the required dependencies, such as
- * other modules. Please be aware that the module is not fully initialized,
- * so not all the API functions are available - you can check if the API
- * is connected by calling the Dmod_IsFunctionConnected() function.
- */
-void dmod_preinit(void)
-{
-    if(Dmod_IsFunctionConnected( Dmod_Printf ))
+    dmosi_mutex_lock(lease->lock);
+    if (options != NULL && options->requested_ip.family == dmroute_family_v4)
     {
-        Dmod_Printf("API is connected!\n");
+        /* RFC 2131 §4.3.2 INIT-REBOOT - immediately followed by
+         * dmdhcp_state_rebooting, no independently observable
+         * "init_reboot" state (see dmdhcp_output_start_reboot()). */
+        lease->offered_ip = options->requested_ip;
+        dmdhcp_output_start_reboot(lease);
     }
+    else
+    {
+        dmdhcp_output_start_discovery(lease);
+    }
+    dmosi_mutex_unlock(lease->lock);
+
+    return (dmdhcp_lease_t)lease;
 }
 
-/**
- * @brief Initialization function for the module.
- *
- * This function is called when the module is enabled.
- * Please use this function to initialize the module, for instance:
- * - initialize the module variables
- * - initialize the module hardware
- * - allocate memory
- */
-int dmod_init(const Dmod_Config_t *Config)
+dmod_dmdhcp_api_declaration(1.0, int, _renew, ( dmdhcp_lease_t lease ))
 {
-    Dmod_Printf("Hello, World!\n");
+    if (lease == NULL || lease->magic != DMDHCP_LEASE_MAGIC)
+        return -EINVAL;
+
+    dmosi_mutex_lock(lease->lock);
+    if (lease->state == dmdhcp_state_bound)
+    {
+        dmdhcp_output_start_renew(lease);
+    }
+    dmosi_mutex_unlock(lease->lock);
     return 0;
 }
 
-/**
- * @brief De-initialization function for the module.
- *
- * This function is called when the module is disabled.
- * Please use this function to de-initialize the module, for instance:
- * - free memory
- * - de-initialize the module hardware
- * - de-initialize the module variables
- */
+dmod_dmdhcp_api_declaration(1.0, int, _release, ( dmdhcp_lease_t lease ))
+{
+    if (lease == NULL || lease->magic != DMDHCP_LEASE_MAGIC)
+        return -EINVAL;
+
+    /* Remove from the lease table first, so no new inbound datagram can
+     * find (and start concurrently touching) this lease while it's being
+     * torn down - same ordering dmtcp_close()/_abort() use. */
+    dmdhcp_lease_table_remove(lease);
+
+    dmosi_mutex_lock(lease->lock);
+    if (lease->offered_ip.family == dmroute_family_v4 && lease->server_id.family == dmroute_family_v4)
+    {
+        dmdhcp_output_send_release(lease); /* best-effort - failure not propagated, see dmdhcp.h */
+    }
+    if (lease->iface_configured)
+    {
+        dmdhcp_lifecycle_unapply(lease);
+    }
+    dmosi_mutex_unlock(lease->lock);
+
+    dmdhcp_lease_table_destroy(lease);
+    return 0;
+}
+
+dmod_dmdhcp_api_declaration(1.0, void, _stop, ( dmdhcp_lease_t lease ))
+{
+    if (lease == NULL || lease->magic != DMDHCP_LEASE_MAGIC)
+        return;
+
+    dmdhcp_lease_table_remove(lease);
+
+    dmosi_mutex_lock(lease->lock);
+    if (lease->iface_configured)
+    {
+        dmdhcp_lifecycle_unapply(lease);
+    }
+    dmosi_mutex_unlock(lease->lock);
+
+    dmdhcp_lease_table_destroy(lease);
+}
+
+int dmod_init(const Dmod_Config_t *Config)
+{
+    (void)Config;
+
+    if (dmdhcp_lease_table_init() != 0)
+    {
+        DMOD_LOG_ERROR("Failed to allocate dmdhcp state\n");
+        return -1;
+    }
+
+    int result = dmdhcp_input_register();
+    if (result != 0)
+    {
+        DMOD_LOG_ERROR("dmdhcp: cannot bind UDP port %u (%d)\n", DMDHCP_CLIENT_PORT, result);
+        return -1;
+    }
+
+    DMOD_LOG_INFO("DMDHCP initialized\n");
+    return 0;
+}
+
 int dmod_deinit(void)
 {
-    Dmod_Printf("Goodbye, World!\n");
+    dmdhcp_input_unregister();
+    dmdhcp_lease_table_deinit();
+
+    DMOD_LOG_INFO("DMDHCP deinitialized\n");
     return 0;
 }
