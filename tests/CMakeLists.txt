@@ -14,13 +14,23 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
 
 target_link_libraries(${DMOD_MODULE_NAME} dmdhcp_if)
 
-# dmnetif/dmroute: dmdhcp.h itself needs these headers (dmnetif_iface_t,
-# dmroute_addr_t) - the codec tests here don't call a dmnetif_*/dmroute_*
-# function, but they do construct dmroute_addr_t values directly, so the
-# type must be visible. Same reasoning as dmtcp/tests/CMakeLists.txt.
+# dmip/dmnetbridge/dmarp/dmnetif/dmroute: drive dmdhcp's registered
+# dmudp_bind() handler (via dmudp, transitively through dmip/dmnetbridge)
+# with hand-built fixture packets, and seed/inspect fixture routes/ARP
+# entries for the state-machine tests - the same set dmtcp/tests/CMakeLists.txt
+# links for the same reason.
+# dmudp: the state-machine tests build a UDP segment by hand
+#        (dmudp_build_header()) to wrap each fixture DHCP message.
+# dmosi: dmosi_thread_sleep() to wait out the RFC 2131 §4.4.1 conflict
+#        probe hand-off (see wait_while_state() in dmdhcp_test.c).
 dmod_link_modules(${DMOD_MODULE_NAME}
+    dmudp
+    dmip
+    dmnetbridge
+    dmarp
     dmnetif
     dmroute
+    dmosi
 )
 
 # Register the test module with ctest - this replays the same two steps CI
