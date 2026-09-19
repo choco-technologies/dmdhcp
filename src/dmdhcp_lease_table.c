@@ -45,7 +45,7 @@ static int compare_pointer(const void* data, const void* user_data)
 
 int dmdhcp_lease_table_init(void)
 {
-    g_leases = dmlist_create(Dmod_GetCurrentAllocatorName());
+    g_leases = dmlist_create();
     g_leases_mutex = dmosi_mutex_create(false);
     return (g_leases != NULL && g_leases_mutex != NULL) ? 0 : -1;
 }
@@ -81,7 +81,7 @@ struct dmdhcp_lease* dmdhcp_lease_table_create(dmnetif_iface_t iface)
 
     memset(lease, 0, sizeof(*lease));
     lease->lock = dmosi_mutex_create(false);
-    lease->dns_servers = dmlist_create(Dmod_GetCurrentAllocatorName());
+    lease->dns_servers = dmlist_create();
     lease->retransmit_timer = dmdhcp_output_create_retransmit_timer(lease);
     lease->lease_timer = dmdhcp_lifecycle_create_lease_timer(lease);
 
