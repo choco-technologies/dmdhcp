@@ -86,6 +86,35 @@ dmdhcp_callbacks_t callbacks = { .on_bound = on_bound, .on_expired_or_lost = on_
 dmdhcp_lease_t lease = dmdhcp_start(iface, &callbacks, NULL, NULL);
 ```
 
+## Tools
+
+- **[tools/dhcpc](tools/dhcpc/README.md)** - Starts a lease on one interface
+  by calling `dmdhcp_start()`, then exits. It's its own Application-type DMOD
+  module (`dhcpc`), released alongside `dmdhcp` itself in every tagged
+  release, and is what actually turns "dmdhcp is loaded" into "this
+  interface has an address" - see "Running as a service" below.
+
+## Running as a service
+
+dmdhcp is a Library-type module, like
+[dmicmp](https://github.com/choco-technologies/dmicmp) - it has no `main()`
+to spawn on its own, so something still needs to load it. Unlike dmicmp
+(which starts answering pings the moment it's loaded), loading dmdhcp alone
+doesn't start acquiring a lease on any interface either -
+`dmdhcp_start(iface, ...)` still needs to be called per interface.
+
+**[tools/dhcpc](tools/dhcpc/README.md)** covers both: it links `dmdhcp_if`
+directly, so loading it also loads and enables `dmdhcp` as its own module
+dependency (no separate `dhcp.ini`-style unit needed anywhere in this
+repo), and it's the thing that actually calls `dmdhcp_start()`. It ships a
+per-interface unit template plus a device rule
+([`tools/dhcpc/configs/dhcp@.ini`](tools/dhcpc/configs/dhcp@.ini) /
+[`dhcp.rules`](tools/dhcpc/configs/dhcp.rules)) that auto-starts one
+instance for every interface
+[dmnet's `networkd`](https://github.com/choco-technologies/dmnet/tree/main/services/networkd)
+also reacts to - both fire from the same `dmnetif` device event. See
+[docs/service.md](docs/service.md) for the full setup.
+
 ## API
 
 | Function | Description |
@@ -110,6 +139,7 @@ complete reference.
 See the `docs/` directory:
 
 - **[api-reference.md](docs/api-reference.md)** - Complete API documentation
+- **[service.md](docs/service.md)** - Running DHCP as a `dmsystem` service
 
 View documentation using `dmf-man dmdhcp`.
 ## Project Structure
@@ -119,7 +149,8 @@ dmdhcp/
 ├── docs/                      # Documentation (markdown format)
 │   ├── README.md
 │   ├── api-reference.md
-│   └── dmdhcp.md              # Architecture: threading, locking, state machine
+│   ├── dmdhcp.md               # Architecture: threading, locking, state machine
+│   └── service.md               # Running DHCP as a dmsystem service
 ├── include/                   # Public headers
 │   └── dmdhcp.h
 ├── src/
@@ -135,6 +166,9 @@ dmdhcp/
 ├── tests/
 │   ├── CMakeLists.txt
 │   └── dmdhcp_test.c
+├── tools/
+│   ├── CMakeLists.txt
+│   └── dhcpc/          # dhcpc CLI + its unit template/device rule, see tools/dhcpc/README.md
 ├── CMakeLists.txt
 ├── Makefile
 ├── dmdhcp.dmr

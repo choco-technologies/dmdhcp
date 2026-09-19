@@ -1,0 +1,20 @@
+; dhcp.rules - libsystemd device rule.
+;
+; Every interface dmnetif registers is reported under class "netif" (see
+; notify_added() in dmnetif's src/dmnetif.c - the same event dmnet's own
+; services/networkd/configs/networkd.rules reacts to for its RX pump). Each
+; one gets its own dhcp@<name> instance too, instantiated on demand from
+; dhcp@.ini.
+;
+; This file and networkd.rules can both define [class=netif] and both fire
+; from the same device-added event - libsystemd runs every rule matching a
+; class, not just the first one loaded (see dmsystem's
+; app/libsystemd/docs/configuration.md#device-rules) - so install this
+; alongside networkd.rules in the same rules directory rather than instead
+; of it; dhcpc has nothing to pump packets with if networkd@%name never
+; starts.
+;
+; Load with libsystemd_load_rules() on the directory this file lives in -
+; see dmsystem's docs/configuration.md ("Device rules").
+[class=netif]
+start=dhcp@%name

@@ -1,5 +1,9 @@
 # Include dynamically generated versions list from latest release
 $include https://github.com/choco-technologies/dmdhcp/releases/download/vlatest/versions.dmm
 
-# Module entry with version placeholder - expanded by $version-available
+# Module entries with version placeholder - expanded by $version-available.
+# Besides the dmdhcp module itself this repo releases the `dhcpc` CLI from
+# tools/ - packaged per full architecture (<arch_name>), since neither is a
+# hardware port.
 dmdhcp https://github.com/choco-technologies/dmdhcp/releases/download/v<version>/dmdhcp-v<version>-<arch_name>.zip
+dhcpc  https://github.com/choco-technologies/dmdhcp/releases/download/v<version>/dhcpc-v<version>-<arch_name>.zip
