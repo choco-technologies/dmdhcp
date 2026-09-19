@@ -13,6 +13,11 @@ dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 # unloads it per call (pulling dmdhcp in as its own linked dependency)
 # instead of holding it resident for the whole test run.
 # dmnetif: the "/dev/null"-backed fixture interface dhcpc resolves by name.
+# dmroute: dmnetif.h #includes dmroute.h directly (dmroute_addr_t) - needed
+#          for that header to resolve even though dhcpc_test.c itself never
+#          calls a dmroute_* function (same reasoning tools/dhcpc's own
+#          CMakeLists.txt gives for linking it).
 dmod_link_modules(${DMOD_MODULE_NAME}
     dmnetif
+    dmroute
 )
