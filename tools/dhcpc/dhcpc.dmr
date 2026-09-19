@@ -30,8 +30,9 @@ readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/too
 inc=./include/${module}_defs.h => ${destination}/${module}/include/${module}_defs.h [origin=${build_dir}/tools/dhcpc/${module}_defs.h]
 
 # === Configuration ===
-# Unit template that starts one dhcpc instance per interface that should
-# acquire an address by DHCP - see ../../docs/service.md.
+# Unit template (dhcp@.ini) and device rule (dhcp.rules) that together start
+# one dhcpc instance per interface that dmnetif reports - see
+# ../../docs/service.md.
 configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/tools/dhcpc/configs]
 
 # === License ===

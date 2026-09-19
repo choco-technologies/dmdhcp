@@ -11,16 +11,15 @@ exits - `dmdhcp_start()` does the rest (retransmission, renewal, rebinding,
 applying the lease to the interface) with no thread of its own to keep
 running afterward. One instance per interface, the same shape
 [dmnet's `networkd`](https://github.com/choco-technologies/dmnet/tree/main/services/networkd)
-uses for its own per-interface unit.
+uses for its own per-interface unit - and, like `networkd`, auto-started for
+every interface `dmnetif` registers via a device rule
+([`configs/dhcp.rules`](configs/dhcp.rules)) reacting to the same `netif`
+class `networkd.rules` does. See [`../../docs/service.md`](../../docs/service.md)
+for the full setup.
 
-Unlike `networkd`, which pumps every interface `dmnetif` registers, not
-every interface should run a DHCP client (a statically-addressed uplink, a
-bridge member, a loopback...), so dhcpc is **not** wired to `dmnetif`'s
-`netif` device class the way `networkd@.ini` is. Instead, drop a
-`dhcp@<interface>.ini` instance file into `libsystemd`'s units directory
-for each interface that should acquire an address by DHCP - see
-[`configs/dhcp@.ini`](configs/dhcp@.ini) and
-[`../../docs/service.md`](../../docs/service.md) for the full setup.
+dhcpc links `dmdhcp_if` directly, so loading it - by any means - loads and
+enables `dmdhcp` itself as its own module dependency. There is no separate
+"load dmdhcp" unit anywhere in this repo.
 
 ## Building
 
@@ -39,27 +38,35 @@ dmod_loader /path/to/dhcpc.dmf eth0
 
 ### Starting at boot
 
-Nothing needs to run dhcpc by hand once its unit is in place. Install
-[`../../configs/dhcp.ini`](../../configs/dhcp.ini) so the `dmdhcp` module
-itself is loaded, then [`configs/dhcp@.ini`](configs/dhcp@.ini) as
-`dhcp@<interface>.ini` for each interface that should use DHCP (an empty
-file inherits everything from the template, the same way `getty@tty1.ini`
-does for `getty@.ini` - see
-[dmsystem's configuration.md](https://github.com/choco-technologies/dmsystem/blob/main/app/libsystemd/docs/configuration.md#templates)):
+Nothing needs to run dhcpc by hand. Install [`configs/dhcp@.ini`](configs/dhcp@.ini)
+into the directory scanned by `libsystemd_scan()` and
+[`configs/dhcp.rules`](configs/dhcp.rules) into the one passed to
+`libsystemd_load_rules()` (see
+[dmsystem's configuration.md](https://github.com/choco-technologies/dmsystem/blob/main/app/libsystemd/docs/configuration.md#device-rules)
+for both formats), alongside dmnet's own `networkd@.ini`/`networkd.rules`:
 
 ```bash
-cp /opt/dmdhcp/configs/dhcp.ini /etc/dmsystem/units/dhcp.ini
 cp /opt/dmdhcp/dhcpc/configs/dhcp@.ini /etc/dmsystem/units/dhcp@.ini
-cp /opt/dmdhcp/dhcpc/configs/dhcp@.ini /etc/dmsystem/units/dhcp@eth0.ini
-dmod_loader systemd.dmf --args "/etc/dmsystem/units"
+cp /opt/dmdhcp/dhcpc/configs/dhcp.rules /etc/dmsystem/rules/dhcp.rules
+dmod_loader systemd.dmf --args "/etc/dmsystem/units /etc/dmsystem/rules"
 ```
+
+From then on every interface `dmnetif` registers starts its own
+`dhcp@<interface>` (and `networkd@<interface>`, from dmnet's own rule -
+both fire from the same device event, see `../../docs/service.md`).
+
+Note that `dhcp@.ini` is a *template*: on its own it starts nothing, so an
+installation that omits `dhcp.rules` gets no automatic DHCP at all.
+Conversely `service start dhcp@eth0` works without the rules file, since
+`libsystemd` instantiates a template on demand.
 
 ## Project Structure
 
 ```
 tools/dhcpc/
 ├── configs/
-│   └── dhcp@.ini      # libsystemd unit template - one instance per interface
+│   ├── dhcp@.ini      # libsystemd unit template (starts dhcpc at boot)
+│   └── dhcp.rules     # device rule - one dhcp@<iface> instance per interface
 ├── src/
 │   └── dhcpc.c
 ├── tests/

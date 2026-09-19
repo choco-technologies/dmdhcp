@@ -98,23 +98,22 @@ dmdhcp_lease_t lease = dmdhcp_start(iface, &callbacks, NULL, NULL);
 
 dmdhcp is a Library-type module, like
 [dmicmp](https://github.com/choco-technologies/dmicmp) - it has no `main()`
-to spawn on its own, so something still needs to load it.
-**[configs/](configs/)** has a
-[dmsystem](https://github.com/choco-technologies/dmsystem)/`libsystemd` unit
-(`dhcp.ini`, `exec=dmdhcp` `type=library`) that registers it as a service,
-the same way `icmp.ini` does for dmicmp.
+to spawn on its own, so something still needs to load it. Unlike dmicmp
+(which starts answering pings the moment it's loaded), loading dmdhcp alone
+doesn't start acquiring a lease on any interface either -
+`dmdhcp_start(iface, ...)` still needs to be called per interface.
 
-Unlike dmicmp, loading dmdhcp alone does not start acquiring a lease on any
-interface - `dmdhcp_start(iface, ...)` still needs to be called per
-interface. **[tools/dhcpc](tools/dhcpc/README.md)** does exactly that, and
-ships its own per-interface unit template
-([`tools/dhcpc/configs/dhcp@.ini`](tools/dhcpc/configs/dhcp@.ini)), the same
-per-instance shape
+**[tools/dhcpc](tools/dhcpc/README.md)** covers both: it links `dmdhcp_if`
+directly, so loading it also loads and enables `dmdhcp` as its own module
+dependency (no separate `dhcp.ini`-style unit needed anywhere in this
+repo), and it's the thing that actually calls `dmdhcp_start()`. It ships a
+per-interface unit template plus a device rule
+([`tools/dhcpc/configs/dhcp@.ini`](tools/dhcpc/configs/dhcp@.ini) /
+[`dhcp.rules`](tools/dhcpc/configs/dhcp.rules)) that auto-starts one
+instance for every interface
 [dmnet's `networkd`](https://github.com/choco-technologies/dmnet/tree/main/services/networkd)
-uses for its own RX pump. See [docs/service.md](docs/service.md) for the
-full setup, including why this is a template an integrator instantiates
-per interface rather than something auto-started for every interface the
-way `networkd` is.
+also reacts to - both fire from the same `dmnetif` device event. See
+[docs/service.md](docs/service.md) for the full setup.
 
 ## API
 
@@ -147,8 +146,6 @@ View documentation using `dmf-man dmdhcp`.
 
 ```
 dmdhcp/
-├── configs/                   # dmsystem unit (type=library) to register dmdhcp as a service
-│   └── dhcp.ini
 ├── docs/                      # Documentation (markdown format)
 │   ├── README.md
 │   ├── api-reference.md
@@ -171,7 +168,7 @@ dmdhcp/
 │   └── dmdhcp_test.c
 ├── tools/
 │   ├── CMakeLists.txt
-│   └── dhcpc/          # dhcpc CLI - its own Application-type module, see tools/dhcpc/README.md
+│   └── dhcpc/          # dhcpc CLI + its unit template/device rule, see tools/dhcpc/README.md
 ├── CMakeLists.txt
 ├── Makefile
 ├── dmdhcp.dmr
