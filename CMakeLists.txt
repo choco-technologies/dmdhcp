@@ -116,3 +116,10 @@ dmod_link_modules(${DMOD_MODULE_NAME}
 
 enable_testing()
 add_subdirectory(tests)
+
+# Application-type DMOD modules built as CLI tools around dmdhcp's API.
+# Added after dmod_add_library() above so ${DMOD_MODULE_NAME}_if already
+# exists - tools/dhcpc links it directly, the same way tests/CMakeLists.txt
+# does, rather than fetching dmdhcp's own headers back via
+# dmod_link_modules() as if it were an external module.
+add_subdirectory(tools)

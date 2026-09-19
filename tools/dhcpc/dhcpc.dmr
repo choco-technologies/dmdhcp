@@ -1,0 +1,43 @@
+# DMOD Resource File for dhcpc
+# This file specifies where resources should be installed
+#
+# dhcpc lives nested under dmdhcp/tools/dhcpc rather than being its own
+# top-level repo, so ${repo_dir}/${build_dir} below (which always resolve
+# to the dmdhcp repo/build root, not this subdirectory) are prefixed with
+# tools/dhcpc - same convention dmicmp/tools/ping/ping.dmr uses.
+
+# === Core Module ===
+# Main module file - always installed
+dmf=./${module}.dmf => ${destination}/${module}.dmf [origin=${dmf_dir}/${module}.dmf]
+
+# Compressed module
+dmfc=./${module}.dmfc => ${destination}/${module}.dmfc [origin=${build_dir}/dmfc/${module}.dmfc]
+
+# Dependencies file (if exists)
+dmd=./${module}.dmd => ${destination}/${module}.dmd [origin=${dmf_dir}/${module}.dmd]
+
+# Version information
+version=./${module}_version.txt => ${destination}/${module}_version.txt [origin=${dmf_dir}/${module}_version.txt]
+
+# === Documentation ===
+# README file
+readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/tools/dhcpc/README.md]
+
+# === Header Files ===
+# No committed include/ dir of its own (its API is dmdhcp's, see the
+# top-level dmdhcp module) - just the generated module definitions header
+# every DMOD module gets, so dmf-man/consumers can still see it.
+inc=./include/${module}_defs.h => ${destination}/${module}/include/${module}_defs.h [origin=${build_dir}/tools/dhcpc/${module}_defs.h]
+
+# === Configuration ===
+# Unit template that starts one dhcpc instance per interface that should
+# acquire an address by DHCP - see ../../docs/service.md.
+configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/tools/dhcpc/configs]
+
+# === License ===
+# License file - shared at the dmdhcp repo root (same "nested module
+# shares the parent repo's LICENSE" convention as dmicmp/tools/ping/ping.dmr)
+license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]
+
+# Adding itself
+dmr=./${module}.dmr => ${destination}/${module}/${module}.dmr [origin=${repo_dir}/tools/dhcpc/${module}.dmr]
