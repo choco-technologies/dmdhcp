@@ -64,10 +64,21 @@ static int send_message(struct dmdhcp_lease* lease, dmdhcp_msg_type_t msg_type, 
     header.ciaddr = (ciaddr != NULL) ? *ciaddr : (dmroute_addr_t){ .family = dmroute_family_none };
     memcpy(header.chaddr, mac.addr, DMNETIF_MAC_ADDR_LEN);
 
-    uint8_t buffer[DMDHCP_MAX_MESSAGE_LEN];
-    int result = dmdhcp_build_message(buffer, sizeof(buffer), &header);
+    /* Heap, not stack: send_message() runs on whatever thread drives the
+     * lease - a dmosi_timer_t callback (the FreeRTOS timer daemon task is
+     * configMINIMAL_STACK_SIZE words, i.e. smaller than this buffer alone)
+     * as well as the caller of dmdhcp_start(). dmudp/dmip allocate their own
+     * packet buffers the same way, and for the same reason. */
+    uint8_t* buffer = Dmod_Malloc(DMDHCP_MAX_MESSAGE_LEN);
+    if (buffer == NULL)
+        return -ENOMEM;
+
+    int result = dmdhcp_build_message(buffer, DMDHCP_MAX_MESSAGE_LEN, &header);
     if (result != 0)
+    {
+        Dmod_Free(buffer);
         return result;
+    }
 
     uint8_t msg_type_byte = (uint8_t)msg_type;
     dmdhcp_option_t options[4];
@@ -90,14 +101,20 @@ static int send_message(struct dmdhcp_lease* lease, dmdhcp_msg_type_t msg_type, 
 
     size_t options_offset = DMDHCP_FIXED_HEADER_LEN + 4u;
     size_t options_len = 0;
-    result = dmdhcp_options_write(&buffer[options_offset], sizeof(buffer) - options_offset, options, option_count, &options_len);
+    result = dmdhcp_options_write(&buffer[options_offset], DMDHCP_MAX_MESSAGE_LEN - options_offset, options, option_count, &options_len);
     if (result != 0)
+    {
+        Dmod_Free(buffer);
         return result;
+    }
 
     size_t total_len = options_offset + options_len;
-    return via_iface
+    result = via_iface
         ? dmudp_send_on_iface(lease->iface, dst, DMDHCP_CLIENT_PORT, DMDHCP_SERVER_PORT, buffer, total_len, DMDHCP_DEFAULT_ARP_TIMEOUT_MS)
         : dmudp_send(dst, DMDHCP_CLIENT_PORT, DMDHCP_SERVER_PORT, buffer, total_len, DMDHCP_DEFAULT_ARP_TIMEOUT_MS);
+
+    Dmod_Free(buffer);
+    return result;
 }
 
 static int send_discover(struct dmdhcp_lease* lease)
