@@ -13,6 +13,7 @@
  */
 #include "dmod.h"
 #include "dmdhcp_internal.h"
+#include "dmdhcp_dns.h"
 #include <string.h>
 #include <errno.h>
 
@@ -324,4 +325,50 @@ dmod_dmdhcp_api_declaration(1.0, int, _get_dns_server, ( dmdhcp_lease_t lease, s
     }
     dmosi_mutex_unlock(lease->lock);
     return result;
+}
+
+/* ============================================================================
+ *                      DNS servers of valid leases
+ * ========================================================================== */
+
+static bool holds_valid_lease(const struct dmdhcp_lease* lease)
+{
+    return lease->state == dmdhcp_state_bound
+        || lease->state == dmdhcp_state_renewing
+        || lease->state == dmdhcp_state_rebinding;
+}
+
+/* Caller holds lease->lock. */
+static void visit_lease_dns_servers(struct dmdhcp_lease* lease, dmdhcp_dns_visitor_t visit, void* ctx)
+{
+    if (!holds_valid_lease(lease))
+        return;
+
+    size_t count = dmlist_size(lease->dns_servers);
+    for (size_t i = 0; i < count; i++)
+    {
+        const dmroute_addr_t* server = (const dmroute_addr_t*)dmlist_get(lease->dns_servers, i);
+        if (server != NULL)
+            visit(ctx, server);
+    }
+}
+
+void dmdhcp_lease_table_visit_dns_servers(dmdhcp_dns_visitor_t visit, void* ctx)
+{
+    if (visit == NULL || g_leases_mutex == NULL)
+        return;
+
+    dmosi_mutex_lock(g_leases_mutex);
+    size_t count = dmlist_size(g_leases);
+    for (size_t i = 0; i < count; i++)
+    {
+        struct dmdhcp_lease* lease = (struct dmdhcp_lease*)dmlist_get(g_leases, i);
+        if (lease == NULL || lease->magic != DMDHCP_LEASE_MAGIC)
+            continue;
+
+        dmosi_mutex_lock(lease->lock);
+        visit_lease_dns_servers(lease, visit, ctx);
+        dmosi_mutex_unlock(lease->lock);
+    }
+    dmosi_mutex_unlock(g_leases_mutex);
 }

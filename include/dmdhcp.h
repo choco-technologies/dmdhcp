@@ -403,7 +403,7 @@ typedef struct
 /** @brief Get the current lease's parameters. Returns -EINVAL unless dmdhcp_get_state() is one of BOUND/RENEWING/REBINDING. */
 dmod_dmdhcp_api(1.0, int, _get_lease_info, ( dmdhcp_lease_t lease, dmdhcp_lease_info_t* out ));
 
-/** @brief Number of DNS servers offered (option 6). dmdhcp owns this storage - no other module in this ecosystem tracks DNS configuration. */
+/** @brief Number of DNS servers offered (option 6). dmdhcp owns this storage; the dmdns resolver reads it through the dmdns_provide_servers DIF (see docs/dmdhcp.md). */
 dmod_dmdhcp_api(1.0, size_t, _get_dns_server_count, ( dmdhcp_lease_t lease ));
 
 /** @brief Get the Nth (0-based) offered DNS server address. Returns -EINVAL if index >= dmdhcp_get_dns_server_count(lease). */

@@ -49,6 +49,7 @@
 #include "dmarp.h"
 #include "dmnetbridge.h"
 #include "dmosi.h"
+#include "dmdns.h"
 #include <string.h>
 #include <errno.h>
 
@@ -698,6 +699,128 @@ DMOD_TEST_STEP(nak_during_renewing_loses_lease_and_deconfigures_interface)
     dmroute_addr_t got_ip = { 0 };
     dmnetif_get_ip_address(g_iface, &got_ip);
     DMOD_TEST_EXPECT_EQ((int)got_ip.family, (int)dmroute_family_none);
+
+    dmdhcp_stop(lease);
+}
+
+/* ============================================================================
+ *                      dmdns_provide_servers DIF
+ * ========================================================================== */
+
+/**
+ * @brief Servers collected from every dmdns_provide_servers implementor -
+ *        grown one entry at a time, the same way dmdns's own sink does
+ */
+typedef struct
+{
+    dmroute_addr_t* list;
+    size_t          count;
+} provided_servers_t;
+
+static int collect_server(void* sink_ctx, const dmip_addr_t* server)
+{
+    provided_servers_t* provided = (provided_servers_t*)sink_ctx;
+    dmroute_addr_t* grown = Dmod_Realloc(provided->list, (provided->count + 1u) * sizeof(dmroute_addr_t));
+    if (grown == NULL)
+        return -ENOMEM;
+    grown[provided->count++] = *server;
+    provided->list = grown;
+    return 0;
+}
+
+/**
+ * @brief Ask every loaded dmdns_provide_servers implementor - exactly what
+ *        dmdns_get_servers() does - and collect what they report. Release
+ *        `provided->list` with Dmod_Free().
+ */
+static void ask_providers(provided_servers_t* provided)
+{
+    provided->list = NULL;
+    provided->count = 0;
+
+    Dmod_Context_t* implementor = NULL;
+    while ((implementor = Dmod_GetNextDifModule(dmod_dmdns_provide_servers_sig, implementor)) != NULL)
+    {
+        dmod_dmdns_provide_servers_t fn =
+            (dmod_dmdns_provide_servers_t)Dmod_GetDifFunction(implementor, dmod_dmdns_provide_servers_sig);
+        if (fn != NULL)
+        {
+            fn(collect_server, provided);
+        }
+    }
+}
+
+static bool same_v4(const dmroute_addr_t* a, const dmroute_addr_t* b)
+{
+    return a->family == dmroute_family_v4 && b->family == dmroute_family_v4
+        && memcmp(a->addr.v4, b->addr.v4, DMROUTE_IPV4_ADDR_LEN) == 0;
+}
+
+static size_t provided_server_count(void)
+{
+    provided_servers_t provided;
+    ask_providers(&provided);
+    Dmod_Free(provided.list);
+    return provided.count;
+}
+
+/** @brief DISCOVER -> OFFER -> ACK with `dns` as option 6, waiting out both conflict probes */
+static void drive_to_bound(dmdhcp_lease_t lease, const dmroute_addr_t* server, const dmroute_addr_t* offered, const dmroute_addr_t* dns)
+{
+    dmroute_addr_t netmask = make_v4(255, 255, 255, 0);
+
+    feed_dhcp_message(g_iface, dmdhcp_msg_offer, dmdhcp_get_xid(lease), server, offered, server, &netmask, server, dns, 3600);
+    wait_while_state(lease, dmdhcp_state_checking_offer, TEST_ARP_PROBE_TIMEOUT_MS + 500u);
+    feed_dhcp_message(g_iface, dmdhcp_msg_ack, dmdhcp_get_xid(lease), server, offered, server, &netmask, server, dns, 3600);
+    wait_while_state(lease, dmdhcp_state_checking_ack, TEST_ARP_PROBE_TIMEOUT_MS + 500u);
+}
+
+DMOD_TEST_STEP(dns_provider_reports_servers_only_while_lease_is_valid)
+{
+    dmdhcp_lease_t lease = dmdhcp_start(g_iface, NULL, NULL, NULL);
+    DMOD_TEST_EXPECT_NOT_NULL(lease);
+
+    /* Still negotiating - nothing confirmed yet */
+    DMOD_TEST_EXPECT_EQ(provided_server_count(), (size_t)0);
+
+    dmroute_addr_t server = make_v4(10, 80, 0, 1);
+    dmroute_addr_t offered = make_v4(10, 80, 0, 50);
+    dmroute_addr_t dns = make_v4(10, 80, 0, 53);
+    drive_to_bound(lease, &server, &offered, &dns);
+    DMOD_TEST_EXPECT_EQ((int)dmdhcp_get_state(lease), (int)dmdhcp_state_bound);
+
+    provided_servers_t provided;
+    ask_providers(&provided);
+    DMOD_TEST_EXPECT_EQ(provided.count, (size_t)1);
+    DMOD_TEST_EXPECT_TRUE(provided.count == 1u && same_v4(&provided.list[0], &dns));
+    Dmod_Free(provided.list);
+
+    /* RENEWING is still a valid lease */
+    DMOD_TEST_EXPECT_EQ(dmdhcp_renew(lease), 0);
+    DMOD_TEST_EXPECT_EQ((int)dmdhcp_get_state(lease), (int)dmdhcp_state_renewing);
+    DMOD_TEST_EXPECT_EQ(provided_server_count(), (size_t)1);
+
+    /* A stopped lease is gone from the table - nothing left to report */
+    dmdhcp_stop(lease);
+    DMOD_TEST_EXPECT_EQ(provided_server_count(), (size_t)0);
+}
+
+DMOD_TEST_STEP(dns_provider_forgets_servers_of_a_lost_lease)
+{
+    dmdhcp_lease_t lease = dmdhcp_start(g_iface, NULL, NULL, NULL);
+    DMOD_TEST_EXPECT_NOT_NULL(lease);
+
+    dmroute_addr_t server = make_v4(10, 90, 0, 1);
+    dmroute_addr_t offered = make_v4(10, 90, 0, 50);
+    dmroute_addr_t dns = make_v4(10, 90, 0, 53);
+    drive_to_bound(lease, &server, &offered, &dns);
+    DMOD_TEST_EXPECT_EQ(provided_server_count(), (size_t)1);
+
+    /* NAK while renewing: the lease is lost and discovery restarts */
+    dmdhcp_renew(lease);
+    feed_dhcp_message(g_iface, dmdhcp_msg_nak, dmdhcp_get_xid(lease), &server, NULL, &server, NULL, NULL, NULL, 0);
+    DMOD_TEST_EXPECT_EQ((int)dmdhcp_get_state(lease), (int)dmdhcp_state_selecting);
+    DMOD_TEST_EXPECT_EQ(provided_server_count(), (size_t)0);
 
     dmdhcp_stop(lease);
 }

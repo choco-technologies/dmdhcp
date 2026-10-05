@@ -18,7 +18,10 @@
  * File map:
  *
  *  - dmdhcp_registrations.c  DMOD_ENABLE_REGISTRATION - must stand alone,
- *                            see that file's own comment
+ *                            see that file's own comment; also the
+ *                            dmdns_provide_servers DIF implementation
+ *  - dmdhcp_dns.h            private bridge from that DIF to the lease table
+ *                            (dmdhcp_lease_table_visit_dns_servers())
  *  - dmdhcp_wire.c           dmdhcp_build_message()/_parse_message() (public API)
  *  - dmdhcp_options.c        RFC 2132 TLV codec (public API)
  *  - dmdhcp_lease_table.c    g_leases CRUD, destroy_with_context(), and the

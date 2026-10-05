@@ -41,6 +41,12 @@ declarations and doc comments - this page is a navigable summary. See
 | `dmdhcp_get_lease_info()` | Snapshot of address/netmask/gateway/server/lease-time - `-EINVAL` unless BOUND/RENEWING/REBINDING. |
 | `dmdhcp_get_dns_server_count()` / `dmdhcp_get_dns_server()` | The DHCP-offered DNS server list (option 6) - dmdhcp is the only owner of DNS configuration storage in this ecosystem. |
 
+### DIF implementations
+
+| DIF | Description |
+|-----|-------------|
+| `dmdns_provide_servers` ([dmdns](https://github.com/choco-technologies/dmdns)) | Reports, through dmdns's sink, the option 6 servers of every lease that is BOUND, RENEWING or REBINDING. Asked by dmdns on every lookup; dmdns is not a required module of dmdhcp. |
+
 ### Wire codec (usable independently of a lease)
 
 | Function | Description |

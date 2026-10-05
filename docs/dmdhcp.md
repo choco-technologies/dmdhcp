@@ -159,6 +159,34 @@ Notes not obvious from the diagram:
   for both a NAK during RENEWING/REBINDING and a full expiry with no ACK
   - dmdhcp always restarts DISCOVER on its own afterward.
 
+## DNS servers for dmdns
+
+dmdhcp implements dmdns's `dmdns_provide_servers` DIF
+(`src/dmdhcp_registrations.c`). On every lookup that goes to the network,
+dmdns asks every loaded implementor for name servers. dmdhcp reports the
+option 6 servers of every lease that is currently BOUND, RENEWING or
+REBINDING (`dmdhcp_lease_table_visit_dns_servers()` in
+`src/dmdhcp_lease_table.c`).
+
+- **Nothing is pushed, so nothing has to be cleaned up.** A lease that
+  expires, is NAK'd, released or stopped simply stops being reported on the
+  next lookup. A renewal with a different server list is picked up the
+  same way.
+- **No runtime dependency in either direction.** dmdhcp links dmdns only
+  for the DIF's declaration (`dmdns.h`) and calls no dmdns function, so
+  dmdns is not a required module of dmdhcp. DHCP works on a board without
+  the resolver, and dmdns finds dmdhcp whenever both are loaded.
+- **Locking.** The visit takes `g_leases_mutex`, then each lease's `lock`.
+  That is the same order as everywhere else: the table lock is never taken
+  while a lease lock is held. So a lease cannot be torn down while it is
+  being visited.
+
+The DIF implementation lives in `dmdhcp_registrations.c` because a DIF
+implementation is only registered from a translation unit with
+`DMOD_ENABLE_REGISTRATION` set. That file reaches the lease table only
+through the small private `src/dmdhcp_dns.h`, so it does not pull in
+`dmdhcp_internal.h`.
+
 ## Known gaps
 
 - IPv4 only - DHCPv6 is out of scope, matching `dmip`/`dmudp`/`dmicmp`'s
@@ -168,6 +196,7 @@ Notes not obvious from the diagram:
   those fields.
 - No `dmdhcp` server-side (`DHCPOFFER`/`DHCPACK` generation) - this module
   is client-only.
-- DNS server storage is dmdhcp's own - no other module in this ecosystem
-  claims ownership of resolver configuration, so `dmdhcp_get_dns_server()`
-  is the only place that information is currently exposed.
+- DNS server storage is dmdhcp's own: the option 6 list lives in each
+  lease. It is exposed through `dmdhcp_get_dns_server()` and, for the
+  [dmdns](https://github.com/choco-technologies/dmdns) resolver, through the
+  `dmdns_provide_servers` DIF - see [DNS servers for dmdns](#dns-servers-for-dmdns).
