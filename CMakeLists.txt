@@ -50,8 +50,10 @@ set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/dmdhcp.dmr)
 # List of MAL interfaces implemented by this module (leave empty if none)
 set(DMOD_MAL_IMPLS          )
 
-# List of DIF interfaces implemented by this module (leave empty if none)
-set(DMOD_DIF_IMPLS          )
+# List of DIF interfaces implemented by this module (leave empty if none) -
+# dmdns_provide_servers (see src/dmdhcp_registrations.c): reports the DNS
+# servers of valid leases to the dmdns resolver.
+set(DMOD_DIF_IMPLS          dmdns)
 
 #
 #   dmod_add_library - create a library module
@@ -104,6 +106,11 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
 # dmosi:   mutexes (one per lease), dmosi_timer_t (retransmit_timer,
 #          lease_timer), and dmosi_rand32() for XID/jitter generation - no
 #          bespoke PRNG in this module.
+# dmdns:   header-only - the dmdns_provide_servers DIF declaration and
+#          dmdns_server_sink_t (see src/dmdhcp_registrations.c). dmdhcp
+#          calls no dmdns function, so dmdns does not become a required
+#          module: DHCP works on a board without the resolver, and the
+#          resolver finds dmdhcp through the DIF when both are loaded.
 dmod_link_modules(${DMOD_MODULE_NAME}
     dmudp
     dmip
@@ -112,6 +119,7 @@ dmod_link_modules(${DMOD_MODULE_NAME}
     dmarp
     dmlist
     dmosi
+    dmdns
 )
 
 enable_testing()

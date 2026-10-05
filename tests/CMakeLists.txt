@@ -23,6 +23,9 @@ target_link_libraries(${DMOD_MODULE_NAME} dmdhcp_if)
 #        (dmudp_build_header()) to wrap each fixture DHCP message.
 # dmosi: dmosi_thread_sleep() to wait out the RFC 2131 §4.4.1 conflict
 #        probe hand-off (see wait_while_state() in dmdhcp_test.c).
+# dmdns: header-only - the dmdns_provide_servers DIF signature, so the
+#        dns_provider_* steps can ask dmdhcp's implementation exactly the
+#        way dmdns_get_servers() does, without loading the resolver itself.
 dmod_link_modules(${DMOD_MODULE_NAME}
     dmudp
     dmip
@@ -31,6 +34,7 @@ dmod_link_modules(${DMOD_MODULE_NAME}
     dmnetif
     dmroute
     dmosi
+    dmdns
 )
 
 # Register the test module with ctest - this replays the same two steps CI
