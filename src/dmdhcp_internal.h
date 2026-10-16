@@ -144,6 +144,7 @@ struct dmdhcp_lease
     uint32_t           t1_sec;
     uint32_t           t2_sec;
     dmlist_context_t*  dns_servers;  /* dmlist of heap dmroute_addr_t* (Dmod_Malloc'd) */
+    dmlist_context_t*  ntp_servers;  /* dmlist of heap dmroute_addr_t* (Dmod_Malloc'd) */
 
     uint32_t        retransmit_interval_ms;
     uint32_t        retransmit_count;   /* consecutive resends in the current requesting/rebooting phase - reset on every state entry */
@@ -223,6 +224,7 @@ void dmdhcp_lease_table_remove(struct dmdhcp_lease* lease);
  * (dmdhcp_input.c) and once during final teardown.
  */
 void dmdhcp_lease_table_clear_dns_servers(struct dmdhcp_lease* lease);
+void dmdhcp_lease_table_clear_ntp_servers(struct dmdhcp_lease* lease);
 
 /* ---- dmdhcp_output.c ---- */
 

@@ -94,6 +94,24 @@ static void populate_lease_from_options(struct dmdhcp_lease* lease, const dmdhcp
             }
         }
     }
+
+    dmdhcp_lease_table_clear_ntp_servers(lease);
+    if (dmdhcp_options_find(options, options_len, DMDHCP_OPT_NTP_SERVER, &opt) == 0)
+    {
+        size_t count = dmdhcp_option_addr_count(&opt);
+        for (size_t i = 0; i < count; i++)
+        {
+            dmroute_addr_t* entry = Dmod_Malloc(sizeof(*entry));
+            if (entry == NULL)
+                break;
+            dmdhcp_option_get_addr_at(&opt, i, entry);
+            if (!dmlist_push_back(lease->ntp_servers, entry))
+            {
+                Dmod_Free(entry);
+                break;
+            }
+        }
+    }
 }
 
 static void dmdhcp_handle_datagram(const dmip_addr_t* src, uint16_t src_port, uint16_t dst_port, dmnetif_iface_t iface, const uint8_t* payload, size_t payload_len)
