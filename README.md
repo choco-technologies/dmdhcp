@@ -127,6 +127,7 @@ also reacts to - both fire from the same `dmnetif` device event. See
 | `dmdhcp_get_state()` / `_get_iface()` / `_get_user_data()` / `_get_xid()` | Simple accessors. |
 | `dmdhcp_get_lease_info()` | Snapshot of the active lease's address/netmask/gateway/server/lease-time. |
 | `dmdhcp_get_dns_server_count()` / `_get_dns_server()` | The DHCP-offered DNS server list. |
+| `dmdns_provide_servers` (DIF implementation) | Reports the DNS servers of every valid lease to the [dmdns](https://github.com/choco-technologies/dmdns) resolver - see [docs/dmdhcp.md](docs/dmdhcp.md#dns-servers-for-dmdns). |
 | `dmdhcp_build_message()` / `_parse_message()` | DHCP/BOOTP fixed header codec (RFC 2131 §2). |
 | `dmdhcp_options_write()` / `_options_find()` / `_option_get_*()` | RFC 2132 TLV options codec. |
 
