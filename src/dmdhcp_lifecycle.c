@@ -92,6 +92,7 @@ void dmdhcp_lifecycle_handle_lost(struct dmdhcp_lease* lease)
 {
     dmosi_mutex_lock(lease->lock);
     dmdhcp_lifecycle_unapply(lease);
+    dmdhcp_lease_table_clear_ntp_servers(lease);
     dmdhcp_expired_handler_t on_expired = lease->callbacks.on_expired_or_lost;
     void* user_data = lease->user_data;
     dmosi_mutex_unlock(lease->lock);
