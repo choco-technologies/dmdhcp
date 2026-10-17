@@ -37,3 +37,15 @@ dmod_dmdns_dif_api_declaration(1.0, dmdhcp, void, _provide_servers, ( dmdns_serv
     if (add != NULL)
         dmdhcp_lease_table_visit_dns_servers(add, sink_ctx);
 }
+
+/* dmntp's optional discovery DIF (API 1.0): each address is four borrowed
+ * IPv4 bytes, callback returns zero to continue. Generic DMOD declarations
+ * avoid a dependency on the NTP library or its release packages, just as the
+ * DNS provider above calls no resolver API. Must match dmntp.h's contract. */
+DMOD_DIF_INPUT_API(dmntp, dmdhcp, DMOD_MAKE_VERSION(1.0,0.1), void, _provide_servers,
+    (dmdhcp_ntp_visitor_t add, void* sink_ctx));
+DMOD_DIF_API_DECLARATION(dmntp, dmdhcp, DMOD_MAKE_VERSION(1.0,0.1), void, _provide_servers,
+    (dmdhcp_ntp_visitor_t add, void* sink_ctx))
+{
+    dmdhcp_lease_table_visit_ntp_servers(add, sink_ctx);
+}

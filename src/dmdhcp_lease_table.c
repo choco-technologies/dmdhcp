@@ -464,3 +464,22 @@ void dmdhcp_lease_table_visit_dns_servers(dmdhcp_dns_visitor_t visit, void* ctx)
     }
     dmosi_mutex_unlock(g_leases_mutex);
 }
+
+void dmdhcp_lease_table_visit_ntp_servers(dmdhcp_ntp_visitor_t visit, void* ctx)
+{
+    if (!visit) return;
+    dmosi_mutex_lock(g_leases_mutex);
+    for (size_t i = 0; i < dmlist_size(g_leases); ++i) {
+        struct dmdhcp_lease* lease = dmlist_get(g_leases, i);
+        if (!lease || lease->magic != DMDHCP_LEASE_MAGIC) continue;
+        dmosi_mutex_lock(lease->lock);
+        if (holds_valid_lease(lease)) {
+            for (size_t j = 0; j < dmlist_size(lease->ntp_servers); ++j) {
+                const dmroute_addr_t* address = dmlist_get(lease->ntp_servers, j);
+                if (address && address->family == dmroute_family_v4 && visit(ctx, address->addr.v4)) break;
+            }
+        }
+        dmosi_mutex_unlock(lease->lock);
+    }
+    dmosi_mutex_unlock(g_leases_mutex);
+}

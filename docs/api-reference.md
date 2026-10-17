@@ -63,3 +63,16 @@ declarations and doc comments - this page is a navigable summary. See
 | `DMDHCP_CLIENT_PORT` | 68 | |
 | `DMDHCP_MAGIC_COOKIE` | `0x63825363` | RFC 2132 §9.1 |
 | `DMDHCP_OPT_*` | - | Option codes dmdhcp reads/writes (subnet mask, router, DNS server, hostname, requested IP, lease time, msg type, server ID, T1, T2, end). |
+
+## NTP server discovery
+
+- `dmdhcp_get_ntp_server_count(lease)`: number of stored option-42 addresses.
+- `dmdhcp_get_ntp_server(lease, index, out)`: copy one stored address;
+  `-EINVAL` for an invalid lease/index/output.
+- `dmdhcp_get_ntp_servers(out, max_count)`: copy up to the supplied capacity
+  from currently valid BOUND/RENEWING/REBINDING leases, returning the number
+  written. Invalid output/capacity returns `-EINVAL`.
+
+The `dmntp_provide_servers` DIF uses the same valid-lease filter and reports
+IPv4 addresses through a sink callback. It performs no NTP query and creates no
+NTP dependency. The snapshot must be fetched again after DHCP renewal/loss.

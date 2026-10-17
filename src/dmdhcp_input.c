@@ -96,7 +96,8 @@ static void populate_lease_from_options(struct dmdhcp_lease* lease, const dmdhcp
     }
 
     dmdhcp_lease_table_clear_ntp_servers(lease);
-    if (dmdhcp_options_find(options, options_len, DMDHCP_OPT_NTP_SERVER, &opt) == 0)
+    if (dmdhcp_options_find(options, options_len, DMDHCP_OPT_NTP_SERVER, &opt) == 0 &&
+        opt.length > 0 && opt.length % DMROUTE_IPV4_ADDR_LEN == 0)
     {
         size_t count = dmdhcp_option_addr_count(&opt);
         for (size_t i = 0; i < count; i++)
