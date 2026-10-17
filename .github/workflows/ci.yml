@@ -1,32 +1,42 @@
 name: CI
+
 on:
   push:
-    branches: [main, master, develop]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [main, master, develop]
+    branches: [ main, master, develop ]
+
 jobs:
   build-and-test:
-    name: Build and Test (${{ matrix.tools }})
+    name: Build and Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        tools: [arch/x86_64, arch/armv7/cortex-m4, arch/armv7/cortex-m7]
     permissions:
       contents: read
     container:
       image: chocotechnologies/dmod:1.0.4
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Build modules
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build dmdhcp
         run: |
-          cmake -S . -B build -DDMOD_MODE=DMOD_MODULE -DDMOD_TOOLS_NAME=${{ matrix.tools }}
-          cmake --build build --parallel 2
-      - name: Verify artifacts
+          mkdir -p build
+          cd build
+          cmake .. -DDMOD_MODE=DMOD_MODULE
+          cmake --build .
+
+      - name: Verify module files
         run: |
+          echo "Checking for module files..."
+          ls -lh build/dmf/
           test -f build/dmf/dmdhcp.dmf
+          test -f build/dmf/dmdhcp_version.txt
           test -f build/dmf/test_dmdhcp.dmf
-          test -f build/dmf/dhcpc.dmf
-      - name: Run native tests
-        if: matrix.tools == 'arch/x86_64'
-        run: ctest --test-dir build --output-on-failure
+          echo "Module files present"
+
+      - name: Run tests with dmod_loader
+        run: |
+          export DMOD_DMF_DIR=$(pwd)/build/dmf
+          dmf-get install -d ${DMOD_DMF_DIR}/test_dmdhcp-local.dmd -y
+          dmod_loader build/dmf/test_dmdhcp.dmf

@@ -81,7 +81,7 @@ static int send_message(struct dmdhcp_lease* lease, dmdhcp_msg_type_t msg_type, 
     }
 
     uint8_t msg_type_byte = (uint8_t)msg_type;
-    dmdhcp_option_t options[5];
+    dmdhcp_option_t options[4];
     size_t option_count = 0;
     options[option_count++] = (dmdhcp_option_t){ .code = DMDHCP_OPT_MSG_TYPE, .length = 1, .data = &msg_type_byte };
     if (requested_ip != NULL)
@@ -98,11 +98,6 @@ static int send_message(struct dmdhcp_lease* lease, dmdhcp_msg_type_t msg_type, 
         uint8_t hostname_len = (uint8_t)((len > 255u) ? 255u : len);
         options[option_count++] = (dmdhcp_option_t){ .code = DMDHCP_OPT_HOSTNAME, .length = hostname_len, .data = (const uint8_t*)lease->hostname };
     }
-
-    /* Ask for option 42 explicitly: servers commonly omit unrequested options. */
-    const uint8_t requested[] = {1, 3, 6, 42, 51, 58, 59};
-    if (msg_type == dmdhcp_msg_discover || msg_type == dmdhcp_msg_request)
-        options[option_count++] = (dmdhcp_option_t){ .code = 55, .length = sizeof(requested), .data = requested };
 
     size_t options_offset = DMDHCP_FIXED_HEADER_LEN + 4u;
     size_t options_len = 0;
@@ -183,7 +178,6 @@ void dmdhcp_output_start_discovery(struct dmdhcp_lease* lease)
     lease->gateway    = (dmroute_addr_t){ .family = dmroute_family_none };
     lease->netmask    = (dmroute_addr_t){ .family = dmroute_family_none };
     dmdhcp_lease_table_clear_dns_servers(lease);
-    dmdhcp_lease_table_clear_ntp_servers(lease);
     lease->retransmit_count = 0;
     lease->retransmit_interval_ms = DMDHCP_RETRANSMIT_INITIAL_MS;
 

@@ -35,8 +35,4 @@ typedef int (*dmdhcp_dns_visitor_t)( void* ctx, const dmroute_addr_t* server );
  */
 void dmdhcp_lease_table_visit_dns_servers(dmdhcp_dns_visitor_t visit, void* ctx);
 
-/* NTP discovery uses raw IPv4 bytes to keep the protocol independent of
- * address type/module headers. Sink callbacks must not re-enter DHCP. */
-typedef int (*dmdhcp_ntp_visitor_t)(void* ctx, const uint8_t* ipv4);
-void dmdhcp_lease_table_visit_ntp_servers(dmdhcp_ntp_visitor_t visit, void* ctx);
 #endif // DMDHCP_DNS_H

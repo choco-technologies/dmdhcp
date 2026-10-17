@@ -283,12 +283,9 @@ static void write_u32_be(uint8_t* p, uint32_t value)
 #define TEST_DEVICE_PATH "/dev/null"
 
 static dmnetif_iface_t g_iface = NULL;
-static const uint8_t* g_fixture_ntp;
-static uint8_t g_fixture_ntp_length;
 
 void dmod_test_setup(void)
 {
-    g_fixture_ntp = NULL; g_fixture_ntp_length = 0;
     g_iface = dmnetif_register("test0", TEST_DEVICE_PATH);
 }
 
@@ -357,7 +354,7 @@ static size_t build_dhcp_payload(uint8_t* out, size_t out_cap, dmdhcp_msg_type_t
     uint8_t lease_bytes[4];
     write_u32_be(lease_bytes, lease_time_sec);
 
-    dmdhcp_option_t options[7];
+    dmdhcp_option_t options[6];
     size_t n = 0;
     options[n++] = (dmdhcp_option_t){ .code = DMDHCP_OPT_MSG_TYPE, .length = 1, .data = &msg_type_byte };
     if (server_id != NULL) options[n++] = (dmdhcp_option_t){ .code = DMDHCP_OPT_SERVER_ID, .length = 4, .data = server_id->addr.v4 };
@@ -366,7 +363,6 @@ static size_t build_dhcp_payload(uint8_t* out, size_t out_cap, dmdhcp_msg_type_t
     if (dns != NULL) options[n++] = (dmdhcp_option_t){ .code = DMDHCP_OPT_DNS_SERVER, .length = 4, .data = dns->addr.v4 };
     if (lease_time_sec > 0) options[n++] = (dmdhcp_option_t){ .code = DMDHCP_OPT_LEASE_TIME, .length = 4, .data = lease_bytes };
 
-    if (g_fixture_ntp) options[n++] = (dmdhcp_option_t){ .code = DMDHCP_OPT_NTP_SERVER, .length = g_fixture_ntp_length, .data = g_fixture_ntp };
     size_t options_len = 0;
     dmdhcp_options_write(&out[options_offset], out_cap - options_offset, options, n, &options_len);
     return options_offset + options_len;
@@ -826,76 +822,5 @@ DMOD_TEST_STEP(dns_provider_forgets_servers_of_a_lost_lease)
     DMOD_TEST_EXPECT_EQ((int)dmdhcp_get_state(lease), (int)dmdhcp_state_selecting);
     DMOD_TEST_EXPECT_EQ(provided_server_count(), (size_t)0);
 
-    dmdhcp_stop(lease);
-}
-
-/* Exercise the same optional DIF consumed by dmntp, without introducing
- * a link dependency on NTP in the DHCP module or tests. */
-typedef int (*ntp_sink_t)(void*, const uint8_t*);
-typedef void (*ntp_provider_t)(ntp_sink_t, void*);
-static int collect_ntp(void* context, const uint8_t* ipv4)
-{
-    size_t* count = context;
-    if (ipv4) ++*count;
-    return 0;
-}
-static size_t ntp_provided_count(void)
-{
-    static const char signature[] = DMOD_DIF_SIGNATURE_PREFIX "_provide_servers@dmntp:1.0/0.1";
-    size_t count = 0;
-    Dmod_Context_t* provider = NULL;
-    while ((provider = Dmod_GetNextDifModule(signature, provider))) {
-        ntp_provider_t fn = (ntp_provider_t)Dmod_GetDifFunction(provider, signature);
-        if (fn) fn(collect_ntp, &count);
-    }
-    return count;
-}
-DMOD_TEST_STEP(ntp_option_42_follows_confirmed_lease)
-{
-    static const uint8_t servers[] = {216,239,35,0, 216,239,35,4};
-    g_fixture_ntp = servers; g_fixture_ntp_length = sizeof(servers);
-    dmroute_addr_t server = make_v4(10, 100, 0, 1), offered = make_v4(10, 100, 0, 50);
-    dmdhcp_lease_t lease = dmdhcp_start(g_iface, NULL, NULL, NULL);
-    DMOD_TEST_EXPECT_NOT_NULL(lease);
-    dmroute_addr_t out[2];
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_servers(out, 2), 0);
-    DMOD_TEST_EXPECT_EQ(ntp_provided_count(), 0);
-    drive_to_bound(lease, &server, &offered, NULL);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_server_count(lease), 2);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_server(lease, 1, out), 0);
-    DMOD_TEST_EXPECT_EQ(out[0].addr.v4[3], 4);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_server(lease, 2, out), -EINVAL);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_servers(out, 1), 1);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_servers(out, 2), 2);
-    DMOD_TEST_EXPECT_EQ(ntp_provided_count(), 2);
-    dmdhcp_renew(lease);
-    DMOD_TEST_EXPECT_EQ(ntp_provided_count(), 2);
-    /* Renewed ACK without option 42 withdraws the old addresses. */
-    g_fixture_ntp = NULL;
-    dmroute_addr_t mask = make_v4(255,255,255,0);
-    feed_dhcp_message(g_iface, dmdhcp_msg_ack, dmdhcp_get_xid(lease), &server, &offered, &server, &mask, &server, NULL, 3600);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_servers(out, 2), 0);
-    DMOD_TEST_EXPECT_EQ(ntp_provided_count(), 0);
-    dmdhcp_renew(lease);
-    g_fixture_ntp = servers;
-    feed_dhcp_message(g_iface, dmdhcp_msg_ack, dmdhcp_get_xid(lease), &server, &offered, &server, &mask, &server, NULL, 3600);
-    DMOD_TEST_EXPECT_EQ(ntp_provided_count(), 2);
-    dmdhcp_renew(lease);
-    feed_dhcp_message(g_iface, dmdhcp_msg_nak, dmdhcp_get_xid(lease), &server, NULL, &server, NULL, NULL, NULL, 0);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_servers(out, 2), 0);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_server_count(lease), 0);
-    DMOD_TEST_EXPECT_EQ(ntp_provided_count(), 0);
-    dmdhcp_stop(lease);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_servers(NULL, 1), -EINVAL);
-}
-DMOD_TEST_STEP(ntp_option_rejects_partial_ipv4_address)
-{
-    static const uint8_t malformed[] = {1,2,3,4,5};
-    g_fixture_ntp = malformed; g_fixture_ntp_length = sizeof(malformed);
-    dmroute_addr_t server = make_v4(10, 101, 0, 1), offered = make_v4(10, 101, 0, 50);
-    dmdhcp_lease_t lease = dmdhcp_start(g_iface, NULL, NULL, NULL);
-    drive_to_bound(lease, &server, &offered, NULL);
-    DMOD_TEST_EXPECT_EQ(dmdhcp_get_ntp_server_count(lease), 0);
-    DMOD_TEST_EXPECT_EQ(ntp_provided_count(), 0);
     dmdhcp_stop(lease);
 }
