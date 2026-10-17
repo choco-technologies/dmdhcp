@@ -83,11 +83,10 @@ struct dmdhcp_lease* dmdhcp_lease_table_create(dmnetif_iface_t iface)
     memset(lease, 0, sizeof(*lease));
     lease->lock = dmosi_mutex_create(false);
     lease->dns_servers = dmlist_create();
-    lease->ntp_servers = dmlist_create();
     lease->retransmit_timer = dmdhcp_output_create_retransmit_timer(lease);
     lease->lease_timer = dmdhcp_lifecycle_create_lease_timer(lease);
 
-    if (lease->lock == NULL || lease->dns_servers == NULL || lease->ntp_servers == NULL || lease->retransmit_timer == NULL || lease->lease_timer == NULL)
+    if (lease->lock == NULL || lease->dns_servers == NULL || lease->retransmit_timer == NULL || lease->lease_timer == NULL)
     {
         dmdhcp_lease_table_destroy(lease); /* magic is still 0 here - see destroy()'s own guard */
         return NULL;
@@ -106,20 +105,6 @@ void dmdhcp_lease_table_clear_dns_servers(struct dmdhcp_lease* lease)
     for (;;)
     {
         dmroute_addr_t* entry = (dmroute_addr_t*)dmlist_pop_front(lease->dns_servers);
-        if (entry == NULL)
-            break;
-        Dmod_Free(entry);
-    }
-}
-
-void dmdhcp_lease_table_clear_ntp_servers(struct dmdhcp_lease* lease)
-{
-    if (lease == NULL || lease->ntp_servers == NULL)
-        return;
-
-    for (;;)
-    {
-        dmroute_addr_t* entry = (dmroute_addr_t*)dmlist_pop_front(lease->ntp_servers);
         if (entry == NULL)
             break;
         Dmod_Free(entry);
@@ -163,12 +148,6 @@ static void destroy_with_context(struct dmdhcp_lease* lease, dmdhcp_teardown_con
     if (lease->dns_servers != NULL)
     {
         dmlist_destroy(lease->dns_servers);
-    }
-
-    dmdhcp_lease_table_clear_ntp_servers(lease);
-    if (lease->ntp_servers != NULL)
-    {
-        dmlist_destroy(lease->ntp_servers);
     }
 
     Dmod_Free(lease->hostname);
@@ -348,77 +327,6 @@ dmod_dmdhcp_api_declaration(1.0, int, _get_dns_server, ( dmdhcp_lease_t lease, s
     return result;
 }
 
-dmod_dmdhcp_api_declaration(1.0, size_t, _get_ntp_server_count, ( dmdhcp_lease_t lease ))
-{
-    if (lease == NULL || lease->magic != DMDHCP_LEASE_MAGIC)
-        return 0;
-
-    dmosi_mutex_lock(lease->lock);
-    size_t count = dmlist_size(lease->ntp_servers);
-    dmosi_mutex_unlock(lease->lock);
-    return count;
-}
-
-dmod_dmdhcp_api_declaration(1.0, int, _get_ntp_server, ( dmdhcp_lease_t lease, size_t index, dmroute_addr_t* out ))
-{
-    if (lease == NULL || lease->magic != DMDHCP_LEASE_MAGIC || out == NULL)
-        return -EINVAL;
-
-    dmosi_mutex_lock(lease->lock);
-    dmroute_addr_t* entry = (dmroute_addr_t*)dmlist_get(lease->ntp_servers, index);
-    int result;
-    if (entry == NULL)
-    {
-        result = -EINVAL;
-    }
-    else
-    {
-        *out = *entry;
-        result = 0;
-    }
-    dmosi_mutex_unlock(lease->lock);
-    return result;
-}
-
-dmod_dmdhcp_api_declaration(1.0, int, _get_ntp_servers, ( dmroute_addr_t* out, size_t max_count ))
-{
-    if (out == NULL || max_count == 0)
-        return -EINVAL;
-
-    size_t written = 0;
-
-    dmosi_mutex_lock(g_leases_mutex);
-
-    for (size_t i = 0; i < dmlist_size(g_leases) && written < max_count; i++)
-    {
-        struct dmdhcp_lease* lease = (struct dmdhcp_lease*)dmlist_get(g_leases, i);
-        if (lease == NULL || lease->magic != DMDHCP_LEASE_MAGIC)
-            continue;
-
-        dmosi_mutex_lock(lease->lock);
-
-        /* Only include servers from bound leases */
-        if (lease->state == dmdhcp_state_bound || lease->state == dmdhcp_state_renewing || lease->state == dmdhcp_state_rebinding)
-        {
-            size_t ntp_count = dmlist_size(lease->ntp_servers);
-            for (size_t j = 0; j < ntp_count && written < max_count; j++)
-            {
-                dmroute_addr_t* entry = (dmroute_addr_t*)dmlist_get(lease->ntp_servers, j);
-                if (entry != NULL)
-                {
-                    out[written++] = *entry;
-                }
-            }
-        }
-
-        dmosi_mutex_unlock(lease->lock);
-    }
-
-    dmosi_mutex_unlock(g_leases_mutex);
-
-    return (int)written;
-}
-
 /* ============================================================================
  *                      DNS servers of valid leases
  * ========================================================================== */
@@ -460,25 +368,6 @@ void dmdhcp_lease_table_visit_dns_servers(dmdhcp_dns_visitor_t visit, void* ctx)
 
         dmosi_mutex_lock(lease->lock);
         visit_lease_dns_servers(lease, visit, ctx);
-        dmosi_mutex_unlock(lease->lock);
-    }
-    dmosi_mutex_unlock(g_leases_mutex);
-}
-
-void dmdhcp_lease_table_visit_ntp_servers(dmdhcp_ntp_visitor_t visit, void* ctx)
-{
-    if (!visit) return;
-    dmosi_mutex_lock(g_leases_mutex);
-    for (size_t i = 0; i < dmlist_size(g_leases); ++i) {
-        struct dmdhcp_lease* lease = dmlist_get(g_leases, i);
-        if (!lease || lease->magic != DMDHCP_LEASE_MAGIC) continue;
-        dmosi_mutex_lock(lease->lock);
-        if (holds_valid_lease(lease)) {
-            for (size_t j = 0; j < dmlist_size(lease->ntp_servers); ++j) {
-                const dmroute_addr_t* address = dmlist_get(lease->ntp_servers, j);
-                if (address && address->family == dmroute_family_v4 && visit(ctx, address->addr.v4)) break;
-            }
-        }
         dmosi_mutex_unlock(lease->lock);
     }
     dmosi_mutex_unlock(g_leases_mutex);

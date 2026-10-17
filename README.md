@@ -183,20 +183,3 @@ Patryk Kubiak
 ## License
 
 MIT
-
-## NTP servers (DHCP option 42)
-
-DISCOVER and REQUEST ask for option 42 in the parameter request list.
-Valid IPv4 address lists from OFFER/ACK replace the lease's previous NTP
-configuration. An ACK without option 42 clears it; malformed address lengths
-are ignored. Discovery restart and lease loss also clear the list.
-
-`dmdhcp_get_ntp_server_count()` and `dmdhcp_get_ntp_server()` inspect a lease;
-`dmdhcp_get_ntp_servers(out, capacity)` copies a bounded snapshot from currently
-BOUND/RENEWING/REBINDING leases. The optional `dmntp_provide_servers` DIF reports
-those same addresses to dmntp on every sampling call. DHCP does not require or
-load NTP, and NTP can fall back to explicit/default servers without DHCP.
-The provider's sink receives four borrowed IPv4 bytes and must not re-enter DHCP.
-
-The NTP discovery consumer and hardware integration probe are in
-[dmntp PR #3](https://github.com/choco-technologies/dmntp/pull/3).

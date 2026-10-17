@@ -165,7 +165,6 @@ typedef struct
 #define DMDHCP_OPT_SERVER_ID     54u
 #define DMDHCP_OPT_RENEWAL_T1    58u
 #define DMDHCP_OPT_REBINDING_T2  59u
-#define DMDHCP_OPT_NTP_SERVER    42u
 #define DMDHCP_OPT_END           255u
 
 typedef enum
@@ -409,25 +408,6 @@ dmod_dmdhcp_api(1.0, size_t, _get_dns_server_count, ( dmdhcp_lease_t lease ));
 
 /** @brief Get the Nth (0-based) offered DNS server address. Returns -EINVAL if index >= dmdhcp_get_dns_server_count(lease). */
 dmod_dmdhcp_api(1.0, int, _get_dns_server, ( dmdhcp_lease_t lease, size_t index, dmroute_addr_t* out ));
-
-/** @brief Number of NTP servers offered (option 42). Returns 0 if no NTP servers in lease. */
-dmod_dmdhcp_api(1.0, size_t, _get_ntp_server_count, ( dmdhcp_lease_t lease ));
-
-/** @brief Get the Nth (0-based) offered NTP server address. Returns -EINVAL if index >= dmdhcp_get_ntp_server_count(lease). */
-dmod_dmdhcp_api(1.0, int, _get_ntp_server, ( dmdhcp_lease_t lease, size_t index, dmroute_addr_t* out ));
-
-/**
- * @brief Get NTP servers from all active DHCP leases.
- *
- * Collects NTP server addresses from all leases that have NTP servers configured.
- * The caller provides an output array that gets filled with server addresses.
- * The caller is responsible for allocating `out` with at least `max_count` elements.
- *
- * @param out      Output array for server addresses (must not be NULL)
- * @param max_count Maximum number of addresses to write to `out`
- * @return Number of servers written to `out`, or negative errno on error
- */
-dmod_dmdhcp_api(1.0, int, _get_ntp_servers, ( dmroute_addr_t* out, size_t max_count ));
 
 #ifdef __cplusplus
 }
